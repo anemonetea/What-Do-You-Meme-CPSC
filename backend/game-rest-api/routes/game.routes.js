@@ -15,6 +15,8 @@ module.exports = (app) => {
 
     app.post('/game/:roomId/users/:userId/captions', game.addFiveCaptionCardsToUser);
 
+    app.put('/game/:roomId/users/:userId/score', game.incrementScoreOnUser);
+
     app.delete('/game/:roomId/users:userId', game.deleteUserFromRoom);
 
     app.delete('/game:roomId', game.deleteRoom);

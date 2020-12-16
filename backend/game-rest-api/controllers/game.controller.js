@@ -26,6 +26,7 @@ exports.createRoom = (req, res) => {
     const users = [{
         _id: req.body.czarId,
         userName: req.body.czarUsername,
+        score: 0,
         cards: []
     }];
 
@@ -116,13 +117,7 @@ exports.addUserToRoom = (req, res) => {
                 message: err.message
             });
         }
-        //console.log(`Result: ${result}; type: ${typeof result}`);
-        //console.log(result.roomCards[0]);
         var cards =  getFiveRandomCaptions(result.roomCards.toObject());
-        console.log(`Cards:`);
-        cards.forEach(card => {
-            console.log(card);
-        })
 
         GameModel.updateOne({'_id': req.params.roomId}, {$pull: {roomCards: {$in: cards}}}, (err, result) => {
             if (err) {
@@ -139,9 +134,21 @@ exports.addUserToRoom = (req, res) => {
                 {
                     _id: req.body.userId,
                     username: req.body.username,
+                    score: 0,
                     cards: cards
                 }
             }
+        })
+        .then(() => {
+            GameModel.findById(req.params.roomId)
+            .then(room => {
+                res.json(room);
+            })
+            .catch(err => {
+                res.status(500).json({
+                    message: "Unable to find the room after updating it."
+                });
+            });
         })
         .catch(err => {
             if (err) {
@@ -154,16 +161,6 @@ exports.addUserToRoom = (req, res) => {
                     message: "Some error happened while adding the user to the room."
                 });
             }
-        });
-        
-        GameModel.findById(req.params.roomId)
-        .then(room => {
-            res.json(room);
-        })
-        .catch(err => {
-            res.status(500).json({
-                message: "Unable to find the room after updating it."
-            });
         });
     });
        
@@ -193,10 +190,7 @@ exports.addCaptionCardToUser = (req, res) => {
                 message: err.message
             });
         }
-        //console.log(`Result: ${result}; type: ${typeof result}`);
-        //console.log(result.roomCards[0]);
         var card =  getRandomCaption(result.roomCards.toObject());
-        console.log(`Card: ${card}`);
 
         GameModel.updateOne({'_id': req.params.roomId}, {$pull: {roomCards: card}}, (err, result) => {
             if (err) {
@@ -215,15 +209,14 @@ exports.addCaptionCardToUser = (req, res) => {
                     message: err.message
                 });
             }
-        });
-
-        GameModel.findById(req.params.roomId)
-        .then(room => {
-            res.json(room);
-        })
-        .catch(err => {
-            res.status(500).json({
-                message: "Unable to find the room after updating it."
+            GameModel.findById(req.params.roomId)
+            .then(room => {
+                res.json(room);
+            })
+            .catch(err => {
+                res.status(500).json({
+                    message: "Unable to find the room after updating it."
+                });
             });
         });
     });
@@ -249,10 +242,7 @@ exports.addFiveCaptionCardsToUser = (req, res) => {
                 message: err.message
             });
         }
-        //console.log(`Result: ${result}; type: ${typeof result}`);
-        //console.log(result.roomCards[0]);
         var cards =  getFiveRandomCaptions(result.roomCards.toObject());
-        console.log(`Card: ${cards}`);
 
         GameModel.updateOne({'_id': req.params.roomId}, {$pull: {roomCards: {$in: cards}}}, (err, result) => {
             if (err) {
@@ -283,6 +273,10 @@ exports.addFiveCaptionCardsToUser = (req, res) => {
             });
         });
     });
+}
+
+exports.incrementScoreOnUser = (req, res) => {
+
 }
 
 exports.deleteUserFromRoom = (req, res) => {

@@ -14,6 +14,7 @@ const GameSchema = mongoose.Schema({
         {
             _id: String,
             username: String,
+            score: Number,
             cards: [String]
         }
     ],
