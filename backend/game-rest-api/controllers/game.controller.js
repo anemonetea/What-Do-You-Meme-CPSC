@@ -1,4 +1,5 @@
 const GameModel = require('../models/game.model');
+var ObjectId = require('mongodb').ObjectID;
 
 exports.createRoom = (req, res) => {
 
@@ -25,7 +26,7 @@ exports.createRoom = (req, res) => {
 
     const users = [{
         _id: req.body.czarId,
-        userName: req.body.czarUsername,
+        username: req.body.czarUsername,
         score: 0,
         cards: []
     }];
@@ -129,8 +130,8 @@ exports.addUserToRoom = (req, res) => {
         });
         
 
-        GameModel.findByIdAndUpdate(req.params.roomId, {
-            $push: { users: 
+        GameModel.findByIdAndUpdate(req.params.roomId, { $push: { 
+            users: 
                 {
                     _id: req.body.userId,
                     username: req.body.username,
@@ -142,22 +143,22 @@ exports.addUserToRoom = (req, res) => {
         .then(() => {
             GameModel.findById(req.params.roomId)
             .then(room => {
-                res.json(room);
+                return res.json(room);
             })
             .catch(err => {
-                res.status(500).json({
+                return res.status(500).json({
                     message: "Unable to find the room after updating it."
                 });
             });
         })
         .catch(err => {
             if (err) {
-                res.status(400).json({
+                return res.status(400).json({
                     message: err.message
                 });
             }
             else {
-                res.status(500).json({
+                return res.status(500).json({
                     message: "Some error happened while adding the user to the room."
                 });
             }
@@ -167,7 +168,82 @@ exports.addUserToRoom = (req, res) => {
 }
 
 exports.addSelectedCaptionToRoom = (req, res) => {
+    if (!req.params.roomId) {
+        return res.status(400).json({
+            message: "roomId url param cannot be empty!"
+        });
+    }
 
+    if (!req.body.userId) {
+        return res.status(400).json({
+            message: "userId body JSON element cannot be empty!"
+        });
+    }
+
+    if (!req.body.selectedCaption) {
+        return res.status(400).json({
+            message: "selectedCaption body JSON element cannot be empty!"
+        });
+    }
+
+    GameModel.find({'_id': req.params.roomId, "users._id": req.body.userId, 'users.cards': req.body.selectedCaption}, (err, result) => {
+        if (!result.length) {
+            return res.status(400).json({
+                message: "Unable to find the given caption in the user's deck of cards."
+            });
+        }
+        else if (err) {
+            return res.status(400).json({
+                message: err.message
+            });
+        }
+
+        GameModel.updateOne({'_id': req.params.roomId}, { $push: {
+            selectedCaptions: {
+                caption: req.body.selectedCaption,
+                ownerFirebaseId: req.body.userId
+            }
+        }})
+        .then(() => {
+            GameModel.updateOne({'_id': req.params.roomId, "users._id": req.body.userId}, {$pull: {'users.$.cards': req.body.selectedCaption}})
+            .then(() => {
+                GameModel.findById(req.params.roomId)
+                .then(room => {
+                    return res.json(room);
+                })
+                .catch(err => {
+                    return res.status(500).json({
+                        message: "Unable to find the room after updating it."
+                    });
+                });
+            })
+            .catch(err => {
+                if (err) {
+                    return res.status(400).json({
+                        message: err.message
+                    });
+                }
+                else {
+                    return res.status(500).json({
+                        message: "Some error occurred while deleting the selected caption card from the user's cards."
+                    });
+                }
+            });
+            
+        })
+        .catch(err => {
+            if (err) {
+                return res.status(400).json({
+                    message: err.message
+                });
+            }
+            else {
+                return res.status(500).json({
+                    message: "Some error occurred while adding the selected caption cardto the room."
+                });
+            }
+        });
+    });
 }
 
 exports.addCaptionCardToUser = (req, res) => {
