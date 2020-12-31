@@ -467,7 +467,33 @@ exports.deleteUserFromRoom = (req, res) => {
 }
 
 exports.deleteRoom = (req, res) => {
+    if (!req.params.roomId) {
+        return res.status(400).json({
+            message: "roomId url param cannot be empty!"
+        });
+    }
 
+    GameModel.findOneAndDelete({'_id': req.params.roomId})
+    .then(room => {
+        if (!room) {
+            return res.status(400).json({
+                message: "Unable to find the given room."
+            });
+        }
+        return res.json(room);
+    })
+    .catch(err => {
+        if (err) {
+            return res.status(400).json({
+                message: err.message
+            });
+        }
+        else {
+            return res.status(500).json({
+                message: "Some error occurred while deleting the room."
+            });
+        }
+    });
 }
 
 function generateCode() {
