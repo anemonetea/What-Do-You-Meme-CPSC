@@ -379,8 +379,13 @@ exports.incrementScoreOnUser = (req, res) => {
     }
 
     GameModel.findOneAndUpdate({'_id': req.params.roomId, 'users._id': req.params.userId}, {$inc: {"users.$.score": 1}}, {new: true})
-    .then(val => {
-        return res.json(val);
+    .then(room => {
+        if (!room) {
+            return res.status(400).json({
+                message: "Unable to find the given room and user id combination."
+            });
+        }
+        return res.json(room);
     })
     .catch(err => {
         if (err) {
@@ -393,10 +398,71 @@ exports.incrementScoreOnUser = (req, res) => {
                 message: "Some error occurred while incrementing user's score in the room."
             });
         }
-    })
+    });
 }
 
 exports.deleteUserFromRoom = (req, res) => {
+    if (!req.params.roomId) {
+        return res.status(400).json({
+            message: "roomId url param cannot be empty!"
+        });
+    }
+
+    if (!req.params.userId) {
+        return res.status(400).json({
+            message: "userId url param cannot be empty!"
+        });
+    }
+
+    GameModel.findOne({'_id': req.params.roomId, 'users._id': req.params.userId})
+    .then(room => {
+        if (!room) {
+            return res.status(400).json({
+                message: "Unable to find the given room and user id combination."
+            });
+        }
+        if (room.czarUserId === req.params.userId) {
+            return res.status(400).json({
+                message: "Cannot remove the Czar user from an ongoing game."
+            });
+        }
+
+        GameModel.findOneAndUpdate({'_id': req.params.roomId}, {$pull: {
+            'users': {'_id': req.params.userId}}
+        }, {new: true})
+        .then(room => {
+            if (!room) {
+                return res.status(400).json({
+                    message: "Unable to find the given room and user id combination."
+                });
+            }
+            return res.json(room);
+        })
+        .catch(err => {
+            if (err) {
+                return res.status(400).json({
+                    message: err.message
+                });
+            }
+            else {
+                return res.status(500).json({
+                    message: "Some error occurred while deleting the user from the room."
+                });
+            }
+        });
+    })
+    .catch(err => {
+        if (err) {
+            return res.status(400).json({
+                message: err.message
+            });
+        }
+        else {
+            return res.status(500).json({
+                message: "Some error occurred while looking for the given room and user combination."
+            });
+        }
+    });
 
 }
 
