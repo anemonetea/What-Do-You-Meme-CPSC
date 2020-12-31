@@ -5,6 +5,7 @@ const GameSchema = mongoose.Schema({
     title: String,
     czarUserId: String,
     code: String,
+    imageUrl: String,
     selectedCaptions: [ 
         {
         caption: String,

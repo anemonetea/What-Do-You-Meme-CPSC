@@ -11,6 +11,8 @@ module.exports = (app) => {
 
     app.put('/game/:roomId/czarUser', game.rotateCzarUser);
 
+    app.put('/game/:roomId/imageUrl', game.updateImage);
+
     app.post('/game/:roomId/selectedCaptions', game.addSelectedCaptionToRoom);
 
     app.delete('/game/:roomId/selectedCaptions', game.clearSelectedCaptionsInRoom);

@@ -1,6 +1,7 @@
 const GameModel = require('../models/game.model');
+const fetch = require('node-fetch');
 
-exports.createRoom = (req, res) => {
+exports.createRoom = async (req, res) => {
 
     if (!req.body) {
         return res.status(400).json({
@@ -22,6 +23,23 @@ exports.createRoom = (req, res) => {
 
     const code = generateCode(); // generate 6-letter code
 
+    const img = await fetchImageUrl();
+    if (img == null) {
+        return res.status(500).json({
+            message: "Some error occurred while fetching the new meme image url."
+        });
+    }
+    if (!img.includes("http")) {
+        if (img.includes("Some error")) {
+            return res.status(500).json({
+                message: img
+            });
+        }
+        return res.status(400).json({
+            message: img
+        });
+    }
+
     const users = [{
         _id: req.body.czarId,
         username: req.body.czarUsername,
@@ -33,6 +51,7 @@ exports.createRoom = (req, res) => {
         title: "What Do You Meme CPSC",
         czarUserId: req.body.czarId,
         code: code,
+        imageUrl: img,
         selectedCaptions: [],
         users: users,
         roomCards: captions
@@ -222,6 +241,54 @@ exports.rotateCzarUser = (req, res) => {
     });
 }
 
+exports.updateImage = async (req, res) => {
+    if (!req.params.roomId) {
+        return res.status(400).json({
+            message: "roomId url param cannot be empty!"
+        });
+    }
+    
+    const img = await fetchImageUrl();
+    if (img == null) {
+        return res.status(500).json({
+            message: "Some error occurred while fetching the new meme image url."
+        });
+    }
+    if (!img.includes("http")) {
+        if (img.includes("Some error")) {
+            return res.status(500).json({
+                message: img
+            });
+        }
+        return res.status(400).json({
+            message: img
+        });
+    }
+    
+    GameModel.findOneAndUpdate({'_id': req.params.roomId}, {$set: {imageUrl: img}}, {new: true})
+    .then(room => {
+        if (!room) {
+            return res.status(400).json({
+                message: "Unable to find the given room."
+            });
+        }
+        return res.json(room);
+    })
+    .catch(err => {
+        if (err) {
+            return res.status(400).json({
+                message: err.message
+            });
+        }
+        else {
+            return res.status(500).json({
+                message: "Some error occurred while updating the meme image url of the room."
+            });
+        }
+    });
+
+}
+
 exports.addSelectedCaptionToRoom = (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
@@ -291,7 +358,7 @@ exports.addSelectedCaptionToRoom = (req, res) => {
             }
             else {
                 return res.status(500).json({
-                    message: "Some error occurred while adding the selected caption cardto the room."
+                    message: "Some error occurred while adding the selected caption card to the room."
                 });
             }
         });
@@ -568,6 +635,30 @@ function generateCode() {
         }
     }
     return code;
+}
+
+async function fetchImageUrl() {
+    return await fetch('https://api.imgflip.com/get_memes', {
+        method: 'get',
+        headers: { 'Accept': 'application/json' },
+    })
+    .then(async res => {
+        if (!res) {
+            return "Unable to fetch meme image url."
+        }
+        let parsedRes = await res.text();
+        let memeData = JSON.parse(parsedRes).data.memes;
+        var num = Math.floor(Math.random() * (99+1));
+        return memeData[num].url;
+    })
+    .catch(err => {
+        if (err) {
+            return  err.message
+        }
+        else {
+            return "Some error occurred while fetching a new meme image."
+        }
+    });
 }
 
 function getFiveRandomCaptions(captions) {
