@@ -9,9 +9,9 @@ module.exports = (app) => {
 
     app.post('/game/:roomId/users', game.addUserToRoom);
 
-    app.put('/game/:roomId/czarUser', game.rotateCzarUser);
+    app.patch('/game/:roomId/czarUser', game.rotateCzarUser);
 
-    app.put('/game/:roomId/imageUrl', game.updateImage);
+    app.patch('/game/:roomId/imageUrl', game.updateImage);
 
     app.post('/game/:roomId/selectedCaptions', game.addSelectedCaptionToRoom);
 
@@ -21,7 +21,7 @@ module.exports = (app) => {
 
     app.post('/game/:roomId/users/:userId/captions', game.addFiveCaptionCardsToUser);
 
-    app.put('/game/:roomId/users/:userId/score', game.incrementScoreOnUser);
+    app.patch('/game/:roomId/users/:userId/score', game.incrementScoreOnUser);
 
     app.delete('/game/:roomId/users/:userId', game.deleteUserFromRoom);
 
