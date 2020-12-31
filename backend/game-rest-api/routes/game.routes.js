@@ -9,6 +9,8 @@ module.exports = (app) => {
 
     app.post('/game/:roomId/users', game.addUserToRoom);
 
+    app.put('/game/:roomId/czarUser', game.rotateCzarUser);
+
     app.post('/game/:roomId/selectedCaptions', game.addSelectedCaptionToRoom);
 
     app.delete('/game/:roomId/selectedCaptions', game.clearSelectedCaptionsInRoom);

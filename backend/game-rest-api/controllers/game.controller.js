@@ -164,6 +164,66 @@ exports.addUserToRoom = (req, res) => {
        
 }
 
+exports.rotateCzarUser = (req, res) => {
+    if (!req.params.roomId) {
+        return res.status(400).json({
+            message: "roomId url param cannot be empty!"
+        });
+    }
+
+    GameModel.findById(req.params.roomId)
+    .then(room => {
+        let currentCzarId = room.czarUserId;
+        let users = room.users;
+        for (let i=0; i<users.length; i++) {
+            if (room.users[i]._id === currentCzarId) {
+                let newCzarUserId;
+                if (i+1 < users.length) {
+                    newCzarUserId = users[i+1]._id;
+                }
+                else {
+                    newCzarUserId = users[0]._id;
+                }
+
+                GameModel.findOneAndUpdate({'_id': req.params.roomId}, {$set: {'czarUserId': newCzarUserId}}, {new: true})
+                .then(room => {
+                    if (!room) {
+                        return res.status(400).json({
+                            message: "Unable to find the given room while updating the czarUserId element."
+                        });
+                    }
+                    return res.json(room);
+                })
+                .catch(err => {
+                    if (err) {
+                        return res.status(400).json({
+                            message: err.message
+                        });
+                    }
+                    else {
+                        return res.status(500).json({
+                            message: "Some error occurred while updating the czarUserId of the room."
+                        });
+                    }
+                });
+                break;
+            }
+        }
+    })
+    .catch(err => {
+        if (err) {
+            return res.status(400).json({
+                message: err.message
+            });
+        }
+        else {
+            return res.status(500).json({
+                message: "Some error occurred while searching for the room."
+            });
+        }
+    });
+}
+
 exports.addSelectedCaptionToRoom = (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
