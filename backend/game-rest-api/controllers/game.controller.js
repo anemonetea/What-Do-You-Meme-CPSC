@@ -1,5 +1,4 @@
 const GameModel = require('../models/game.model');
-var ObjectId = require('mongodb').ObjectID;
 
 exports.createRoom = (req, res) => {
 
@@ -22,7 +21,6 @@ exports.createRoom = (req, res) => {
     }
 
     const code = generateCode(); // generate 6-letter code
-    //const cards = getFiveRandomCaptions();
 
     const users = [{
         _id: req.body.czarId,

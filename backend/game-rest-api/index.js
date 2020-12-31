@@ -1,4 +1,3 @@
-const bodyParser = require('body-parser');
 const express = require('express');
 
 const app = express();
@@ -10,9 +9,6 @@ app.use(express.urlencoded({
 }));
 
 require('./routes/game.routes')(app);
-
-// app.use(bodyParser.urlencoded({ extended: true }))
-// app.use(bodyParser.json())
 
 
 // Configuring the database
