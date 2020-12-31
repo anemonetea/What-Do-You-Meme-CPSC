@@ -320,10 +320,10 @@ exports.addCaptionCardToUser = (req, res) => {
             }
             GameModel.findById(req.params.roomId)
             .then(room => {
-                res.json(room);
+                return res.json(room);
             })
             .catch(err => {
-                res.status(500).json({
+                return res.status(500).json({
                     message: "Unable to find the room after updating it."
                 });
             });
@@ -374,10 +374,10 @@ exports.addFiveCaptionCardsToUser = (req, res) => {
 
         GameModel.findById(req.params.roomId)
         .then(room => {
-            res.json(room);
+            return res.json(room);
         })
         .catch(err => {
-            res.status(500).json({
+            return res.status(500).json({
                 message: "Unable to find the room after updating it."
             });
         });
@@ -385,7 +385,34 @@ exports.addFiveCaptionCardsToUser = (req, res) => {
 }
 
 exports.incrementScoreOnUser = (req, res) => {
+    if (!req.params.roomId) {
+        return res.status(400).json({
+            message: "roomId url param cannot be empty!"
+        });
+    }
 
+    if (!req.params.userId) {
+        return res.status(400).json({
+            message: "userId url param cannot be empty!"
+        });
+    }
+
+    GameModel.findOneAndUpdate({'_id': req.params.roomId, 'users._id': req.params.userId}, {$inc: {"users.$.score": 1}}, {new: true})
+    .then(val => {
+        return res.json(val);
+    })
+    .catch(err => {
+        if (err) {
+            return res.status(400).json({
+                message: err.message
+            });
+        }
+        else {
+            return res.status(500).json({
+                message: "Some error occurred while incrementing user's score in the room."
+            });
+        }
+    })
 }
 
 exports.deleteUserFromRoom = (req, res) => {
