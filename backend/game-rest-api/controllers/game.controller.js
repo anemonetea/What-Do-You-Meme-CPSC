@@ -127,42 +127,39 @@ exports.addUserToRoom = (req, res) => {
                     message: err.message
                 });
             }
-        });
-        
 
-        GameModel.findByIdAndUpdate(req.params.roomId, { $push: { 
-            users: 
-                {
-                    _id: req.body.userId,
-                    username: req.body.username,
-                    score: 0,
-                    cards: cards
+            GameModel.findOneAndUpdate({'_id': req.params.roomId}, { $push: { 
+                users: 
+                    {
+                        _id: req.body.userId,
+                        username: req.body.username,
+                        score: 0,
+                        cards: cards
+                    }
                 }
-            }
-        })
-        .then(() => {
-            GameModel.findById(req.params.roomId)
+            }, {new: true})
             .then(room => {
+                if (!room) {
+                    return res.status(400).json({
+                        message: "Unable to find the given room."
+                    });
+                }
                 return res.json(room);
             })
             .catch(err => {
-                return res.status(500).json({
-                    message: "Unable to find the room after updating it."
-                });
+                if (err) {
+                    return res.status(400).json({
+                        message: err.message
+                    });
+                }
+                else {
+                    return res.status(500).json({
+                        message: "Some error happened while adding the user to the room."
+                    });
+                }
             });
-        })
-        .catch(err => {
-            if (err) {
-                return res.status(400).json({
-                    message: err.message
-                });
-            }
-            else {
-                return res.status(500).json({
-                    message: "Some error happened while adding the user to the room."
-                });
-            }
         });
+        
     });
        
 }
@@ -205,17 +202,14 @@ exports.addSelectedCaptionToRoom = (req, res) => {
             }
         }})
         .then(() => {
-            GameModel.updateOne({'_id': req.params.roomId, "users._id": req.body.userId}, {$pull: {'users.$.cards': req.body.selectedCaption}})
-            .then(() => {
-                GameModel.findById(req.params.roomId)
-                .then(room => {
-                    return res.json(room);
-                })
-                .catch(err => {
-                    return res.status(500).json({
-                        message: "Unable to find the room after updating it."
+            GameModel.findOneAndUpdate({'_id': req.params.roomId, "users._id": req.body.userId}, {$pull: {'users.$.cards': req.body.selectedCaption}}, {new: true})
+            .then(room => {
+                if (!room) {
+                    return res.status(400).json({
+                        message: "Unable to find the given room and user id combination."
                     });
-                });
+                }
+                return res.json(room);
             })
             .catch(err => {
                 if (err) {
@@ -253,17 +247,14 @@ exports.clearSelectedCaptionsInRoom = (req, res) => {
         });
     }
     
-    GameModel.updateOne({'_id': req.params.roomId}, {$set: {'selectedCaptions': []}})
-    .then(() => {
-        GameModel.findById(req.params.roomId)
-                .then(room => {
-                    return res.json(room);
-                })
-                .catch(err => {
-                    return res.status(500).json({
-                        message: "Unable to find the room after updating it."
-                    });
-                });
+    GameModel.findOneAndUpdate({'_id': req.params.roomId}, {$set: {'selectedCaptions': []}}, {new: true})
+    .then(room => {
+        if (!room) {
+            return res.status(400).json({
+                message: "Unable to find the given room."
+            });
+        }
+        return res.json(room);
     })
     .catch(err => {
         if (err) {
@@ -308,24 +299,19 @@ exports.addCaptionCardToUser = (req, res) => {
                     message: err.message
                 });
             }
-        });
-        
 
-        GameModel.updateOne({'_id': req.params.roomId, 'users._id': req.params.userId}, {$push: {'users.$.cards': card}}, (err, result) => {
-            if (err) {
-                console.log(err);
-                return res.status(400).json({
-                    message: err.message
-                });
-            }
-            GameModel.findById(req.params.roomId)
-            .then(room => {
-                return res.json(room);
-            })
-            .catch(err => {
-                return res.status(500).json({
-                    message: "Unable to find the room after updating it."
-                });
+            GameModel.findOneAndUpdate({'_id': req.params.roomId, 'users._id': req.params.userId}, {$push: {'users.$.cards': card}}, {new: true}, (err, result) => {
+                if (err) {
+                    return res.status(400).json({
+                        message: err.message
+                    });
+                }
+                if (!result) {
+                    return res.status(400).json({
+                        message: "Unable to find the given user id and room combination."
+                    });
+                }
+                return res.json(result);
             });
         });
     });
@@ -360,25 +346,20 @@ exports.addFiveCaptionCardsToUser = (req, res) => {
                     message: err.message
                 });
             }
-        });
-        
 
-        GameModel.updateOne({'_id': req.params.roomId, 'users._id': req.params.userId}, {$set: {'users.$.cards': cards}}, (err, result) => {
-            if (err) {
-                console.log(err);
-                return res.status(400).json({
-                    message: err.message
-                });
-            }
-        });
-
-        GameModel.findById(req.params.roomId)
-        .then(room => {
-            return res.json(room);
-        })
-        .catch(err => {
-            return res.status(500).json({
-                message: "Unable to find the room after updating it."
+            GameModel.findOneAndUpdate({'_id': req.params.roomId, 'users._id': req.params.userId}, {$set: {'users.$.cards': cards}}, {new: true}, (err, result) => {
+                if (err) {
+                    console.log(err);
+                    return res.status(400).json({
+                        message: err.message
+                    });
+                }
+                if (!result) {
+                    return res.status(400).json({
+                        message: "Unable to find the given user id and room combination."
+                    });
+                }
+                return res.json(result);
             });
         });
     });
