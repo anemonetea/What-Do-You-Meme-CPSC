@@ -246,6 +246,39 @@ exports.addSelectedCaptionToRoom = (req, res) => {
     });
 }
 
+exports.clearSelectedCaptionsInRoom = (req, res) => {
+    if (!req.params.roomId) {
+        return res.status(400).json({
+            message: "roomId url param cannot be empty!"
+        });
+    }
+    
+    GameModel.updateOne({'_id': req.params.roomId}, {$set: {'selectedCaptions': []}})
+    .then(() => {
+        GameModel.findById(req.params.roomId)
+                .then(room => {
+                    return res.json(room);
+                })
+                .catch(err => {
+                    return res.status(500).json({
+                        message: "Unable to find the room after updating it."
+                    });
+                });
+    })
+    .catch(err => {
+        if (err) {
+            return res.status(400).json({
+                message: err.message
+            });
+        }
+        else {
+            return res.status(500).json({
+                message: "Some error occurred while clearing selected caption cards in the room."
+            });
+        }
+    });
+}
+
 exports.addCaptionCardToUser = (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
