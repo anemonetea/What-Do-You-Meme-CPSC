@@ -167,7 +167,7 @@ exports.addUserToRoom = async (req, res) => {
         validateUserDoesNotExist(room, req.body.userId);
 
         const cards = pullFiveRandomCaptions(room.roomCards);
-        room.roomCards = [...room.roomCards];
+        room.markModified("roomCards");
         room.users.push({
             _id: req.body.userId,
             username: req.body.username,
@@ -391,6 +391,7 @@ exports.addCaptionCardToUser = async (req, res) => {
             });
         }
         const card = getRandomCaption(room.roomCards);
+        room.markModified("roomCards");
         const currentUser = findUserByUserId(room, req.params.userId);
         currentUser.cards.push(card);
         const updatedRoom = await room.save();
@@ -429,7 +430,7 @@ exports.addFiveCaptionCardsToUser = async (req, res) => {
             });
         }
         const cards = pullFiveRandomCaptions(room.roomCards);
-        room.roomCards = [...room.roomCards];
+        room.markModified("roomCards");
         const currentUser = findUserByUserId(room, req.params.userId);
         currentUser.cards = currentUser.cards.concat(cards);
         const updatedRoom = await room.save();
@@ -636,14 +637,11 @@ async function fetchImageUrl() {
 }
 
 function pullFiveRandomCaptions(captions) {
-    // TODO: caption deletions aren't persisting
     let myCaptions = [];
     let indexes = [];
     for (let i=0; i<5; i++) {
-        let indx = Math.floor(Math.random() * 100) % (captions.length-1);
-        while (indexes.find(index => index === indx) || captions[indx] === undefined) {
-            indx = Math.floor(Math.random() * 100) % (captions.length-1);
-        }
+        let indx = getRandomArrayIndex(captions.length);
+        indx = validateReplaceNextIndex(indx, indexes, captions);
         indexes.push(indx);
         myCaptions[i] = captions[indx];
     }
@@ -654,8 +652,30 @@ function pullFiveRandomCaptions(captions) {
 }
 
 function getRandomCaption(captions) {
-    let indx = Math.floor(Math.random() * 100) % (captions.length-1);
-    return captions[indx];
+    let indx = getRandomArrayIndex(captions.length);
+    indx = validateReplaceNextIndex(indx, [], captions);
+    let myCaption = captions[indx];
+    delete captions[indx];
+    return myCaption;
+}
+
+function validateReplaceNextIndex(nextIndex, seenIndexes, values) {
+    const randIndx = nextIndex;  // save the index
+    while (seenIndexes.find(i => i === nextIndex) || values[nextIndex] == undefined) {
+        nextIndex = nextIndex + 1;
+        if (nextIndex == values.length) {
+            nextIndex = 0;
+        }
+        if (nextIndex == randIndx) {
+            // This will ultimately detect if all values have been used up (are nully).
+            break;
+        }
+    }
+    return nextIndex;
+}
+
+function getRandomArrayIndex(arrayLength) {
+    return Math.floor(Math.random() * 100) % (arrayLength-1);
 }
 
 const DEFAULT_CAPTIONS = [
