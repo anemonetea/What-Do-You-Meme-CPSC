@@ -17,15 +17,22 @@ const mongoose = require('mongoose');
 
 mongoose.Promise = global.Promise;
 
+connectDb();
+
 // Connecting to the database
-mongoose.connect(dbConfig.url, {
-    useNewUrlParser: true
-}).then(() => {
-    console.log("Successfully connected to the database");    
-}).catch(err => {
-    console.log('Could not connect to the database. Exiting now...', err);
-    process.exit();
-});
+async function connectDb() {
+    try {
+        await mongoose.connect(dbConfig.url, dbConfig.clientOptions);
+        console.log("Successfully connected to the database");
+        await mongoose.connection.db.admin().command({ ping: 1 });
+        console.log("Successfully pinged database deployment.");
+    }
+    catch (err) {
+        console.log('Could not connect to the database. Exiting now...', err);
+        await mongoose.disconnect();
+        process.exit();
+    }
+}
 
 app.get('/', (req, res) => {
     console.log("Hello");

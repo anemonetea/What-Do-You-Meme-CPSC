@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-mongoose.set('useFindAndModify', false);
 
 const GameSchema = mongoose.Schema({
     title: String,
@@ -8,8 +7,8 @@ const GameSchema = mongoose.Schema({
     imageUrl: String,
     selectedCaptions: [ 
         {
-        caption: String,
-        ownerFirebaseId: String
+            caption: String,
+            ownerFirebaseId: String
         }
     ],
     users: [

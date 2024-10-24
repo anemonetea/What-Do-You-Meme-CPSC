@@ -13,15 +13,15 @@ module.exports = (app) => {
 
     app.patch('/game/:roomId/imageUrl', game.updateImage);
 
-    app.post('/game/:roomId/selectedCaptions', game.addSelectedCaptionToRoom);
+    app.post('/game/:roomId/:czarUserId/selectedCaptions', game.addSelectedCaptionToRoom);
 
-    app.delete('/game/:roomId/selectedCaptions', game.clearSelectedCaptionsInRoom);
+    app.delete('/game/:roomId/:czarUserId/selectedCaptions', game.clearSelectedCaptionsInRoom);
 
-    app.post('/game/:roomId/users/:userId/captions/1', game.addCaptionCardToUser);
+    app.post('/game/:roomId/users/:userId/caption', game.addCaptionCardToUser);
 
     app.post('/game/:roomId/users/:userId/captions', game.addFiveCaptionCardsToUser);
 
-    app.patch('/game/:roomId/users/:userId/score', game.incrementScoreOnUser);
+    //app.patch('/game/:roomId/users/:userId/score', game.incrementScoreOnUser);
 
     app.delete('/game/:roomId/users/:userId', game.deleteUserFromRoom);
 

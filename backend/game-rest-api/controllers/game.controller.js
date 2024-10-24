@@ -1,6 +1,27 @@
 const GameModel = require('../models/game.model');
 const fetch = require('node-fetch');
 
+class UserNotFoundError extends Error {
+    constructor(userId = "", ...args) {
+        const message = `Cannot find user with id ${userId} in the game room.`;
+        super(message, ...args);
+    }
+}
+
+class UserExistsError extends Error {
+    constructor(userId = "", ...args) {
+        const message = `User with userId=${userId} already exists in the room.`;
+        super(message, ...args);
+    }
+}
+
+class InvalidTypeError extends Error {
+    constructor(param = "", type = "", ...args) {
+        const message = `Invalid param (${param}) of type ${type}`;
+        super(message, ...args);
+    }
+}
+
 exports.createRoom = async (req, res) => {
 
     if (!req.body) {
@@ -54,13 +75,13 @@ exports.createRoom = async (req, res) => {
         imageUrl: img,
         selectedCaptions: [],
         users: users,
-        roomCards: captions
+        roomCards: [...DEFAULT_CAPTIONS]
     });
 
     game.save()
     .then( data => res.json(data))
     .catch( err => {
-        console.log(err);
+        console.error(err);
         res.status(500).json({
             message: err.message || "Some error occurred while creating the Lobby."
         });
@@ -74,7 +95,7 @@ exports.getAllRooms = (req, res) => {
         res.json(rooms);
     })
     .catch(err => {
-        console.log(err);
+        console.error(err);
         res.status(500).json({
             message: "Some error occurred while retreiving game data."
         });
@@ -103,17 +124,23 @@ exports.getRoom = (req, res) => {
                 message: "Room with id " + req.params.roomId + " not found."
             });
         }
-        console.log(err);
+        console.error(err);
         return res.status(500).json({
             message: "Error retrieving room with id " + req.params.roomId + "."
         });
     });
 }
 
-exports.addUserToRoom = (req, res) => {
+exports.addUserToRoom = async (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
             message: "roomId url param cannot be empty!"
+        });
+    }
+
+    if (!req.body) {
+        return res.status(400).json({
+            message: "Request body cannot be empty!"
         });
     }
 
@@ -129,116 +156,63 @@ exports.addUserToRoom = (req, res) => {
         });
     }
 
-    GameModel.findOne({'_id': req.params.roomId}, (err, result) => {
-        if (err) {
+    try {
+        const room = await GameModel.findOne({'_id': req.params.roomId});
+        if (!room) {
             return res.status(400).json({
+                message: `Cannot find room with roomId=${req.params.roomId}.`
+            });
+        }
+
+        validateUserDoesNotExist(room, req.body.userId);
+
+        const cards = pullFiveRandomCaptions(room.roomCards);
+        room.roomCards = [...room.roomCards];
+        room.users.push({
+            _id: req.body.userId,
+            username: req.body.username,
+            score: 0,
+            cards: cards
+        });
+        const updatedGame = await room.save();
+        return res.json(updatedGame);
+    } catch (err) {
+        console.error(err);
+        if (err instanceof UserExistsError || err instanceof InvalidTypeError) {
+            return res.status(500).json({
                 message: err.message
             });
         }
-        var cards =  getFiveRandomCaptions(result.roomCards.toObject());
-
-        GameModel.updateOne({'_id': req.params.roomId}, {$pull: {roomCards: {$in: cards}}}, (err, result) => {
-            if (err) {
-                console.log(err);
-                return res.status(400).json({
-                    message: err.message
-                });
-            }
-
-            GameModel.findOneAndUpdate({'_id': req.params.roomId}, { $push: { 
-                users: 
-                    {
-                        _id: req.body.userId,
-                        username: req.body.username,
-                        score: 0,
-                        cards: cards
-                    }
-                }
-            }, {new: true})
-            .then(room => {
-                if (!room) {
-                    return res.status(400).json({
-                        message: "Unable to find the given room."
-                    });
-                }
-                return res.json(room);
-            })
-            .catch(err => {
-                if (err) {
-                    return res.status(400).json({
-                        message: err.message
-                    });
-                }
-                else {
-                    return res.status(500).json({
-                        message: "Some error happened while adding the user to the room."
-                    });
-                }
-            });
+        return res.status(500).json({
+            message: "Error while adding the user to the room."
         });
-        
-    });
-       
+    }
 }
 
-exports.rotateCzarUser = (req, res) => {
+exports.rotateCzarUser = async (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
             message: "roomId url param cannot be empty!"
         });
     }
 
-    GameModel.findById(req.params.roomId)
-    .then(room => {
-        let currentCzarId = room.czarUserId;
-        let users = room.users;
-        for (let i=0; i<users.length; i++) {
-            if (room.users[i]._id === currentCzarId) {
-                let newCzarUserId;
-                if (i+1 < users.length) {
-                    newCzarUserId = users[i+1]._id;
-                }
-                else {
-                    newCzarUserId = users[0]._id;
-                }
-
-                GameModel.findOneAndUpdate({'_id': req.params.roomId}, {$set: {'czarUserId': newCzarUserId}}, {new: true})
-                .then(room => {
-                    if (!room) {
-                        return res.status(400).json({
-                            message: "Unable to find the given room while updating the czarUserId element."
-                        });
-                    }
-                    return res.json(room);
-                })
-                .catch(err => {
-                    if (err) {
-                        return res.status(400).json({
-                            message: err.message
-                        });
-                    }
-                    else {
-                        return res.status(500).json({
-                            message: "Some error occurred while updating the czarUserId of the room."
-                        });
-                    }
-                });
-                break;
-            }
-        }
-    })
-    .catch(err => {
-        if (err) {
+    try {
+        const room = await GameModel.findById(req.params.roomId);
+        if (!room) {
             return res.status(400).json({
-                message: err.message
+                message: `Cannot find room with roomId=${req.params.roomId}.`
             });
         }
-        else {
-            return res.status(500).json({
-                message: "Some error occurred while searching for the room."
-            });
-        }
-    });
+        const newCzarUserId = findNewCzarUserId(room.users, room.czarUserId);
+        room.czarUserId = newCzarUserId;
+        const updatedRoom = room.save();
+        return res.json(updatedRoom);
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({
+            message: "Error while updating the czarUserId of the room."
+        });
+    }
 }
 
 exports.updateImage = async (req, res) => {
@@ -269,7 +243,7 @@ exports.updateImage = async (req, res) => {
     .then(room => {
         if (!room) {
             return res.status(400).json({
-                message: "Unable to find the given room."
+                message: `Unable to find room with roomId=${req.params.roomId}.`
             });
         }
         return res.json(room);
@@ -289,10 +263,22 @@ exports.updateImage = async (req, res) => {
 
 }
 
-exports.addSelectedCaptionToRoom = (req, res) => {
+exports.addSelectedCaptionToRoom = async (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
             message: "roomId url param cannot be empty!"
+        });
+    }
+
+    if (!req.params.czarUserId) {
+        return res.status(400).json({
+            message: "czarUserId url param cannot be empty!"
+        });
+    }
+
+    if (!req.body) {
+        return res.status(400).json({
+            message: "Request body cannot be empty!"
         });
     }
 
@@ -308,61 +294,50 @@ exports.addSelectedCaptionToRoom = (req, res) => {
         });
     }
 
-    GameModel.find({'_id': req.params.roomId, "users._id": req.body.userId, 'users.cards': req.body.selectedCaption}, (err, result) => {
-        if (!result.length) {
+    if (req.params.czarUserId == req.body.userId) {
+        return res.status(400).json({
+            message: "Czar user cannot select their own cards."
+        });
+    }
+
+    try {
+        // Find the card to be selected in the user's deck (a selected card needs to exist)
+        const room = await GameModel.findOne({'_id': req.params.roomId, "users._id": req.body.userId, "czarUserId": req.params.czarUserId, 'users.cards': req.body.selectedCaption});
+        if (!room) {
             return res.status(400).json({
-                message: "Unable to find the given caption in the user's deck of cards."
-            });
-        }
-        else if (err) {
-            return res.status(400).json({
-                message: err.message
+                message: `Cannot find room for roomId=${req.params.roomId}, czarUserId=${req.params.czarUserId}, with a member user userId=${req.body.userId}.`
             });
         }
 
-        GameModel.updateOne({'_id': req.params.roomId}, { $push: {
-            selectedCaptions: {
-                caption: req.body.selectedCaption,
-                ownerFirebaseId: req.body.userId
-            }
-        }})
-        .then(() => {
-            GameModel.findOneAndUpdate({'_id': req.params.roomId, "users._id": req.body.userId}, {$pull: {'users.$.cards': req.body.selectedCaption}}, {new: true})
-            .then(room => {
-                if (!room) {
-                    return res.status(400).json({
-                        message: "Unable to find the given room and user id combination."
-                    });
-                }
-                return res.json(room);
+        // Validate that the card's owner user has the card.
+        const currentUser = findUserByUserId(room, req.body.userId);
+        const foundCard = currentUser.cards.find(caption => caption == req.body.selectedCaption);
+        if (!foundCard) {
+            return res.status(400).json({
+                message: `Card "${req.body.selectedCaption}" not found for user with userId=${req.body.userId}.`
             })
-            .catch(err => {
-                if (err) {
-                    return res.status(400).json({
-                        message: err.message
-                    });
-                }
-                else {
-                    return res.status(500).json({
-                        message: "Some error occurred while deleting the selected caption card from the user's cards."
-                    });
-                }
-            });
-            
-        })
-        .catch(err => {
-            if (err) {
-                return res.status(400).json({
-                    message: err.message
-                });
-            }
-            else {
-                return res.status(500).json({
-                    message: "Some error occurred while adding the selected caption card to the room."
-                });
-            }
+        }
+        
+        // Update the room's selected card
+        room.selectedCaptions.push({
+            caption: req.body.selectedCaption,
+            ownerFirebaseId: req.body.userId
         });
-    });
+        // Remove selected card from the user's deck
+        currentUser.cards = currentUser.cards.filter(caption => caption !== req.body.selectedCaption);
+        const updatedRoom = await room.save();
+        return res.json(updatedRoom);
+    } catch (err) {
+        console.error(err);
+        if (err instanceof UserNotFoundError || err instanceof InvalidTypeError) {
+            return res.status(500).json({
+                message: err.message
+            });
+        }
+        return res.status(500).json({
+            message: "Error while adding the selected caption card to the room."
+        });
+    }
 }
 
 exports.clearSelectedCaptionsInRoom = (req, res) => {
@@ -371,31 +346,69 @@ exports.clearSelectedCaptionsInRoom = (req, res) => {
             message: "roomId url param cannot be empty!"
         });
     }
+
+    if (!req.params.czarUserId) {
+        return res.status(400).json({
+            message: "czarUserId url param cannot be empty!"
+        });
+    }
     
-    GameModel.findOneAndUpdate({'_id': req.params.roomId}, {$set: {'selectedCaptions': []}}, {new: true})
+    GameModel.findOneAndUpdate({'_id': req.params.roomId, "czarUserId": req.params.czarUserId}, {$set: {'selectedCaptions': []}}, {new: true})
     .then(room => {
         if (!room) {
             return res.status(400).json({
-                message: "Unable to find the given room."
+                message: `Unable to find the room for roomId=${req.params.roomId} and czarUserId=${req.params.czarUserId}.`
             });
         }
         return res.json(room);
     })
     .catch(err => {
-        if (err) {
+        console.error(err);
+        return res.status(500).json({
+            message: "Error while clearing selected caption cards in the room."
+        });
+    });
+}
+
+exports.addCaptionCardToUser = async (req, res) => {
+    if (!req.params.roomId) {
+        return res.status(400).json({
+            message: "roomId url param cannot be empty!"
+        });
+    }
+
+    if (!req.params.userId) {
+        return res.status(400).json({
+            message: "userId url param cannot be empty!"
+        });
+    }
+
+    try {
+        const room = await GameModel.findOne({'_id': req.params.roomId});
+        if (!room) {
             return res.status(400).json({
-                message: err.message
+                message: `Cannot find room with roomId=${req.params.roomId}.`
             });
         }
-        else {
+        const card = getRandomCaption(room.roomCards);
+        const currentUser = findUserByUserId(room, req.params.userId);
+        currentUser.cards.push(card);
+        const updatedRoom = await room.save();
+        return res.json(updatedRoom);
+    } catch (err) {
+        console.error(err);
+        if (err instanceof UserNotFoundError || err instanceof InvalidTypeError) {
             return res.status(500).json({
-                message: "Some error occurred while clearing selected caption cards in the room."
+                message: err.message
             });
         }
-    });
+        return res.status(500).json({
+            message: "Error while adding caption to user."
+        });
+    }
 }
 
-exports.addCaptionCardToUser = (req, res) => {
+exports.addFiveCaptionCardsToUser = async (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
             message: "roomId url param cannot be empty!"
@@ -408,88 +421,33 @@ exports.addCaptionCardToUser = (req, res) => {
         });
     }
 
-
-    GameModel.findOne({'_id': req.params.roomId}, (err, result) => {
-        if (err) {
+    try {
+        const room = await GameModel.findOne({'_id': req.params.roomId});
+        if (!room) {
             return res.status(400).json({
+                message: `Cannot find room with roomId=${req.params.roomId}.`
+            });
+        }
+        const cards = pullFiveRandomCaptions(room.roomCards);
+        room.roomCards = [...room.roomCards];
+        const currentUser = findUserByUserId(room, req.params.userId);
+        currentUser.cards = currentUser.cards.concat(cards);
+        const updatedRoom = await room.save();
+        return res.json(updatedRoom);
+    } catch (err) {
+        console.error(err);
+        if (err instanceof UserNotFoundError || err instanceof InvalidTypeError) {
+            return res.status(500).json({
                 message: err.message
             });
         }
-        var card =  getRandomCaption(result.roomCards.toObject());
-
-        GameModel.updateOne({'_id': req.params.roomId}, {$pull: {roomCards: card}}, (err, result) => {
-            if (err) {
-                console.log(err);
-                return res.status(400).json({
-                    message: err.message
-                });
-            }
-
-            GameModel.findOneAndUpdate({'_id': req.params.roomId, 'users._id': req.params.userId}, {$push: {'users.$.cards': card}}, {new: true}, (err, result) => {
-                if (err) {
-                    return res.status(400).json({
-                        message: err.message
-                    });
-                }
-                if (!result) {
-                    return res.status(400).json({
-                        message: "Unable to find the given user id and room combination."
-                    });
-                }
-                return res.json(result);
-            });
-        });
-    });
-}
-
-exports.addFiveCaptionCardsToUser = (req, res) => {
-    if (!req.params.roomId) {
-        return res.status(400).json({
-            message: "roomId url param cannot be empty!"
+        return res.status(500).json({
+            message: `Error while adding five cards to user ${req.params.userId}.`
         });
     }
-
-    if (!req.params.userId) {
-        return res.status(400).json({
-            message: "userId url param cannot be empty!"
-        });
-    }
-
-
-    GameModel.findOne({'_id': req.params.roomId}, (err, result) => {
-        if (err) {
-            return res.status(400).json({
-                message: err.message
-            });
-        }
-        var cards =  getFiveRandomCaptions(result.roomCards.toObject());
-
-        GameModel.updateOne({'_id': req.params.roomId}, {$pull: {roomCards: {$in: cards}}}, (err, result) => {
-            if (err) {
-                console.log(err);
-                return res.status(400).json({
-                    message: err.message
-                });
-            }
-
-            GameModel.findOneAndUpdate({'_id': req.params.roomId, 'users._id': req.params.userId}, {$set: {'users.$.cards': cards}}, {new: true}, (err, result) => {
-                if (err) {
-                    console.log(err);
-                    return res.status(400).json({
-                        message: err.message
-                    });
-                }
-                if (!result) {
-                    return res.status(400).json({
-                        message: "Unable to find the given user id and room combination."
-                    });
-                }
-                return res.json(result);
-            });
-        });
-    });
 }
 
+/*
 exports.incrementScoreOnUser = (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
@@ -507,26 +465,21 @@ exports.incrementScoreOnUser = (req, res) => {
     .then(room => {
         if (!room) {
             return res.status(400).json({
-                message: "Unable to find the given room and user id combination."
+                message: `Cannot find room with roomId=${req.params.roomId} with member userId=${req.params.userId}.`
             });
         }
         return res.json(room);
     })
     .catch(err => {
-        if (err) {
-            return res.status(400).json({
-                message: err.message
-            });
-        }
-        else {
-            return res.status(500).json({
-                message: "Some error occurred while incrementing user's score in the room."
-            });
-        }
+        console.error(err);
+        return res.status(500).json({
+            message: "Error while incrementing user's score in the room."
+        });
     });
 }
+*/
 
-exports.deleteUserFromRoom = (req, res) => {
+exports.deleteUserFromRoom = async (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
             message: "roomId url param cannot be empty!"
@@ -539,11 +492,11 @@ exports.deleteUserFromRoom = (req, res) => {
         });
     }
 
-    GameModel.findOne({'_id': req.params.roomId, 'users._id': req.params.userId})
-    .then(room => {
+    try {
+        const room = await GameModel.findOne({'_id': req.params.roomId, 'users._id': req.params.userId});
         if (!room) {
             return res.status(400).json({
-                message: "Unable to find the given room and user id combination."
+                message: `Cannot find room with roomId=${req.params.roomId}.`
             });
         }
         if (room.czarUserId === req.params.userId) {
@@ -551,44 +504,16 @@ exports.deleteUserFromRoom = (req, res) => {
                 message: "Cannot remove the Czar user from an ongoing game."
             });
         }
-
-        GameModel.findOneAndUpdate({'_id': req.params.roomId}, {$pull: {
-            'users': {'_id': req.params.userId}}
-        }, {new: true})
-        .then(room => {
-            if (!room) {
-                return res.status(400).json({
-                    message: "Unable to find the given room and user id combination."
-                });
-            }
-            return res.json(room);
-        })
-        .catch(err => {
-            if (err) {
-                return res.status(400).json({
-                    message: err.message
-                });
-            }
-            else {
-                return res.status(500).json({
-                    message: "Some error occurred while deleting the user from the room."
-                });
-            }
+        // Remove user from users list
+        room.users = room.users.filter(user => user._id !== req.params.userId);
+        const updatedRoom = await room.save();
+        res.json(updatedRoom);
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({
+            message: "Error while deleting the user from the room."
         });
-    })
-    .catch(err => {
-        if (err) {
-            return res.status(400).json({
-                message: err.message
-            });
-        }
-        else {
-            return res.status(500).json({
-                message: "Some error occurred while looking for the given room and user combination."
-            });
-        }
-    });
-
+    }
 }
 
 exports.deleteRoom = (req, res) => {
@@ -602,7 +527,7 @@ exports.deleteRoom = (req, res) => {
     .then(room => {
         if (!room) {
             return res.status(400).json({
-                message: "Unable to find the given room."
+                message: `Unable to find the room with roomId=${req.params.roomId}.`
             });
         }
         return res.json(room);
@@ -619,6 +544,55 @@ exports.deleteRoom = (req, res) => {
             });
         }
     });
+}
+
+function findUserByUserId(room, userId) {
+    let requestingUserId;
+    const userIdType = typeof userId;  // JS type string
+    if (userIdType === 'number') {
+        requestingUserId = req.body.userId.toString();
+    } else if (userIdType === 'string') {
+        requestingUserId = userId.trim();
+    } else {
+        throw new InvalidTypeError(userId, userIdType);
+    }
+    const currentUser = room.users.find(user => user._id === requestingUserId);
+    if (!currentUser) {
+        throw new UserNotFoundError(userId);
+    }
+    return currentUser;
+}
+
+function validateUserDoesNotExist(room, userId) {
+    let requestingUserId;
+    const userIdType = typeof userId;  // JS type string
+    if (userIdType === 'number') {
+        requestingUserId = userId.toString();
+    } else if (userIdType === 'string') {
+        requestingUserId = userId.trim();
+    } else {
+        throw new InvalidTypeError(userId, userIdType);
+    }
+    const existingUser = room.users.find(user => user._id === requestingUserId);
+    if (existingUser) {
+        throw new UserExistsError(userId);
+    }
+}
+
+function findNewCzarUserId(users, currentCzarId) {
+    let newCzarUserId;
+    for (let i=0; i<users.length; i++) {
+        if (users[i]._id === currentCzarId) {
+            if (i+1 < users.length) {
+                newCzarUserId = users[i+1]._id;
+            }
+            else {
+                newCzarUserId = users[0]._id;
+            }
+            break;
+        }
+    }
+    return newCzarUserId;
 }
 
 function generateCode() {
@@ -661,17 +635,21 @@ async function fetchImageUrl() {
     });
 }
 
-function getFiveRandomCaptions(captions) {
+function pullFiveRandomCaptions(captions) {
+    // TODO: caption deletions aren't persisting
     let myCaptions = [];
     let indexes = [];
-    for (i=0; i<5; i++) {
+    for (let i=0; i<5; i++) {
         let indx = Math.floor(Math.random() * 100) % (captions.length-1);
-        while (indexes.find(index => index === indx)) {
+        while (indexes.find(index => index === indx) || captions[indx] === undefined) {
             indx = Math.floor(Math.random() * 100) % (captions.length-1);
         }
         indexes.push(indx);
         myCaptions[i] = captions[indx];
     }
+    // Remove selected indexes from captions list
+    indexes.forEach(i => delete captions[i]);
+    //captions = captions.filter(el => el !== undefined);
     return myCaptions;
 }
 
@@ -680,7 +658,7 @@ function getRandomCaption(captions) {
     return captions[indx];
 }
 
-const captions = [
+const DEFAULT_CAPTIONS = [
     'When you get fucked in your 449 final.',
     'The Comp Sci Lab.',
     'When you are frustrated with your Base Model Macbook Air.',
