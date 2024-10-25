@@ -304,12 +304,6 @@ exports.addSelectedCaptionToRoom = async (req, res) => {
         });
     }
 
-    if (!req.params.czarUserId) {
-        return res.status(400).json({
-            message: "czarUserId url param cannot be empty!"
-        });
-    }
-
     if (!req.body) {
         return res.status(400).json({
             message: "Request body cannot be empty!"
@@ -322,7 +316,7 @@ exports.addSelectedCaptionToRoom = async (req, res) => {
         });
     }
 
-    if (!req.body.selectedCaption) {
+    if (!req.body.caption) {
         return res.status(400).json({
             message: "selectedCaption body JSON element cannot be empty!"
         });
@@ -336,7 +330,7 @@ exports.addSelectedCaptionToRoom = async (req, res) => {
 
     try {
         // Find the card to be selected in the user's deck (a selected card needs to exist)
-        const room = await GameModel.findOne({'_id': req.params.roomId, "users._id": req.body.userId, "czarUserId": req.params.czarUserId, 'users.cards': req.body.selectedCaption});
+        const room = await GameModel.findOne({'_id': req.params.roomId, "users._id": req.body.userId, 'users.cards': req.body.caption});
         if (!room) {
             return res.status(400).json({
                 message: `Cannot find room for roomId=${req.params.roomId}, czarUserId=${req.params.czarUserId}, with a member user userId=${req.body.userId}.`
@@ -345,20 +339,20 @@ exports.addSelectedCaptionToRoom = async (req, res) => {
 
         // Validate that the card's owner user has the card.
         const currentUser = findUserByUserId(room, req.body.userId);
-        const foundCard = currentUser.cards.find(caption => caption == req.body.selectedCaption);
+        const foundCard = currentUser.cards.find(caption => caption == req.body.caption);
         if (!foundCard) {
             return res.status(400).json({
-                message: `Card "${req.body.selectedCaption}" not found for user with userId=${req.body.userId}.`
+                message: `Card "${req.body.caption}" not found for user with userId=${req.body.userId}.`
             })
         }
         
         // Update the room's selected card
         room.selectedCaptions.push({
-            caption: req.body.selectedCaption,
-            ownerFirebaseId: req.body.userId
+            caption: req.body.caption,
+            userId: req.body.userId
         });
         // Remove selected card from the user's deck
-        currentUser.cards = currentUser.cards.filter(caption => caption !== req.body.selectedCaption);
+        currentUser.cards = currentUser.cards.filter(caption => caption !== req.body.caption);
         const updatedRoom = await room.save();
         return res.json(updatedRoom);
     } catch (err) {
@@ -374,6 +368,7 @@ exports.addSelectedCaptionToRoom = async (req, res) => {
     }
 }
 
+/*
 exports.clearSelectedCaptionsInRoom = (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
@@ -403,6 +398,7 @@ exports.clearSelectedCaptionsInRoom = (req, res) => {
         });
     });
 }
+*/
 
 exports.addCaptionCardToUser = async (req, res) => {
     if (!req.params.roomId) {
@@ -489,15 +485,18 @@ exports.scoreSelectedCaption = async (req, res) => {
         });
     }
 
-    if (!req.params.czarUserId) {
+    if (!req.params.captionId) {
         return res.status(400).json({
-            message: "czarUserId url param cannot be empty!"
+            message: "captionId url param cannot be empty!"
         });
     }
+    if (typeof req.params.captionId === 'number') {
+        req.params.captionId = `${req.params.captionId}`;
+    }
 
-    if (!req.body.caption) {
+    if (!req.body.czarUserId) {
         return res.status(400).json({
-            message: "caption body JSON element cannot be empty!"
+            message: "czarUserId body JSON element cannot be empty!"
         });
     }
 
@@ -508,27 +507,27 @@ exports.scoreSelectedCaption = async (req, res) => {
     }
 
     try {
-        const room = await GameModel.findOne({'_id': req.params.roomId, 'czarUserId': req.params.czarUserId});
+        const room = await GameModel.findOne({'_id': req.params.roomId, 'czarUserId': req.body.czarUserId});
         if (!room) {
             return res.status(400).json({
-                message: `Cannot find room with roomId=${req.params.roomId} and Czar userId=${req.params.czarUserId}.`
+                message: `Cannot find room with roomId=${req.params.roomId} and Czar userId=${req.body.czarUserId}.`
             });
         }
         // Validate Czar token
-        const roomCzar = await RoomCzarModel.findOne({ 'roomId': req.params.roomId, 'czarUserId': req.params.czarUserId, 'czarToken': req.body.czarToken });
+        const roomCzar = await RoomCzarModel.findOne({ 'roomId': req.params.roomId, 'czarUserId': req.body.czarUserId, 'czarToken': req.body.czarToken });
         if (!roomCzar) {
             return res.status(400).json({
-                message: `Czar unauthorized for roomId=${req.params.roomId} with czar userId=${req.params.czarUserId}.`
+                message: `Czar unauthorized for roomId=${req.params.roomId} with czar userId=${req.body.czarUserId}.`
             });
         }
         // Look up the owner of the winning caption
-        const foundSelectedCaption = room.selectedCaptions.find(selectedCaption => selectedCaption.caption === req.body.caption);
+        const foundSelectedCaption = room.selectedCaptions.find(selectedCaption => selectedCaption._id.toString() === req.params.captionId);
         if (!foundSelectedCaption) {
             return res.status(400).json({
-                message: `Input caption "${req.body.caption}" not found in the list of selected captions.`
+                message: `Input caption "${req.params.captionId}" not found in the list of selected captions.`
             });
         }
-        const captionOwnerUserId = foundSelectedCaption.ownerFirebaseId;
+        const captionOwnerUserId = foundSelectedCaption.userId;
         const targetUser = findUserByUserId(room, captionOwnerUserId);
         if (targetUser._id == roomCzar.czarUserId) {
             return res.status(400).json({

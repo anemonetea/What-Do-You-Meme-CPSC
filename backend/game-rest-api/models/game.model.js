@@ -8,7 +8,7 @@ const GameSchema = mongoose.Schema({
     selectedCaptions: [ 
         {
             caption: String,
-            ownerFirebaseId: String
+            userId: String
         }
     ],
     users: [

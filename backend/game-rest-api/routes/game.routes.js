@@ -13,11 +13,11 @@ module.exports = (app) => {
 
     app.patch('/game/:roomId/imageUrl', game.updateImage);
 
-    app.post('/game/:roomId/:czarUserId/selectedCaptions', game.addSelectedCaptionToRoom);
+    app.post('/game/:roomId/selectedCaptions', game.addSelectedCaptionToRoom);
 
-    app.delete('/game/:roomId/:czarUserId/selectedCaptions', game.clearSelectedCaptionsInRoom);
+    app.patch('/game/:roomId/selectedCaptions/:captionId', game.scoreSelectedCaption);
 
-    app.patch('/game/:roomId/:czarUserId/score', game.scoreSelectedCaption);
+    //app.delete('/game/:roomId/:czarUserId/selectedCaptions', game.clearSelectedCaptionsInRoom);
 
     app.post('/game/:roomId/users/:userId/caption', game.addCaptionCardToUser);
 
