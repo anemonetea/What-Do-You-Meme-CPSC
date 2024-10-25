@@ -17,11 +17,11 @@ module.exports = (app) => {
 
     app.delete('/game/:roomId/:czarUserId/selectedCaptions', game.clearSelectedCaptionsInRoom);
 
+    app.patch('/game/:roomId/:czarUserId/score', game.scoreSelectedCaption);
+
     app.post('/game/:roomId/users/:userId/caption', game.addCaptionCardToUser);
 
     app.post('/game/:roomId/users/:userId/captions', game.addFiveCaptionCardsToUser);
-
-    //app.patch('/game/:roomId/users/:userId/score', game.incrementScoreOnUser);
 
     app.delete('/game/:roomId/users/:userId', game.deleteUserFromRoom);
 

@@ -482,37 +482,78 @@ exports.addFiveCaptionCardsToUser = async (req, res) => {
     }
 }
 
-/*
-exports.incrementScoreOnUser = (req, res) => {
+exports.scoreSelectedCaption = async (req, res) => {
     if (!req.params.roomId) {
         return res.status(400).json({
             message: "roomId url param cannot be empty!"
         });
     }
 
-    if (!req.params.userId) {
+    if (!req.params.czarUserId) {
         return res.status(400).json({
-            message: "userId url param cannot be empty!"
+            message: "czarUserId url param cannot be empty!"
         });
     }
 
-    GameModel.findOneAndUpdate({'_id': req.params.roomId, 'users._id': req.params.userId}, {$inc: {"users.$.score": 1}}, {new: true})
-    .then(room => {
+    if (!req.body.caption) {
+        return res.status(400).json({
+            message: "caption body JSON element cannot be empty!"
+        });
+    }
+
+    if (!req.body.czarToken) {
+        return res.status(400).json({
+            message: "czarToken body JSON element cannot be empty!"
+        });
+    }
+
+    try {
+        const room = await GameModel.findOne({'_id': req.params.roomId, 'czarUserId': req.params.czarUserId});
         if (!room) {
             return res.status(400).json({
-                message: `Cannot find room with roomId=${req.params.roomId} with member userId=${req.params.userId}.`
+                message: `Cannot find room with roomId=${req.params.roomId} and Czar userId=${req.params.czarUserId}.`
             });
         }
-        return res.json(room);
-    })
-    .catch(err => {
+        // Validate Czar token
+        const roomCzar = await RoomCzarModel.findOne({ 'roomId': req.params.roomId, 'czarUserId': req.params.czarUserId, 'czarToken': req.body.czarToken });
+        if (!roomCzar) {
+            return res.status(400).json({
+                message: `Czar unauthorized for roomId=${req.params.roomId} with czar userId=${req.params.czarUserId}.`
+            });
+        }
+        // Look up the owner of the winning caption
+        const foundSelectedCaption = room.selectedCaptions.find(selectedCaption => selectedCaption.caption === req.body.caption);
+        if (!foundSelectedCaption) {
+            return res.status(400).json({
+                message: `Input caption "${req.body.caption}" not found in the list of selected captions.`
+            });
+        }
+        const captionOwnerUserId = foundSelectedCaption.ownerFirebaseId;
+        const targetUser = findUserByUserId(room, captionOwnerUserId);
+        if (targetUser._id == roomCzar.czarUserId) {
+            return res.status(400).json({
+                message: `The game Czar cannot increment their own score.`
+            });
+        }
+        // Increment the score of the caption owner
+        targetUser.score += 1;
+        // Clear the selected captions
+        room.selectedCaptions = [];
+        // Save the game
+        const updatedRoom = await room.save();
+        return res.json(updatedRoom);
+    } catch (err) {
         console.error(err);
+        if (err instanceof UserNotFoundError || err instanceof InvalidTypeError) {
+            return res.status(500).json({
+                message: err.message
+            });
+        }
         return res.status(500).json({
-            message: "Error while incrementing user's score in the room."
+            message: `Error while incrementing user's score in the game room.`
         });
-    });
+    }
 }
-*/
 
 exports.deleteUserFromRoom = async (req, res) => {
     if (!req.params.roomId) {
