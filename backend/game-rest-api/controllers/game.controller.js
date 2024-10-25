@@ -1,5 +1,14 @@
-const GameModel = require('../models/game.model');
 const fetch = require('node-fetch');
+let crypto;
+try {
+  crypto = require('node:crypto');
+} catch (err) {
+  console.error('crypto support is disabled!');
+}
+
+const GameModel = require('../models/game.model');
+const RoomCzarModel = require('../models/room-czars.model');
+
 
 class UserNotFoundError extends Error {
     constructor(userId = "", ...args) {
@@ -18,6 +27,12 @@ class UserExistsError extends Error {
 class InvalidTypeError extends Error {
     constructor(param = "", type = "", ...args) {
         const message = `Invalid param (${param}) of type ${type}`;
+        super(message, ...args);
+    }
+}
+
+class ImageFetchError extends Error {
+    constructor(message, ...args) {
         super(message, ...args);
     }
 }
@@ -44,49 +59,64 @@ exports.createRoom = async (req, res) => {
 
     const code = generateCode(); // generate 6-letter code
 
-    const img = await fetchImageUrl();
-    if (img == null) {
-        return res.status(500).json({
-            message: "Some error occurred while fetching the new meme image url."
-        });
-    }
-    if (!img.includes("http")) {
-        if (img.includes("Some error")) {
+    let img;
+    try {
+        img = await fetchImageUrl();
+    } catch (err) {
+        if (err instanceof ImageFetchError) {
             return res.status(500).json({
-                message: img
+                message: err.message
+            });
+        } else {
+            return res.status(500).json({
+                message: "Error while fetching the new meme image url."
             });
         }
-        return res.status(400).json({
-            message: img
+    }
+
+    let updatedGame;
+    let updatedRoomCzar;
+
+    try {
+        const users = [{
+            _id: req.body.czarId,
+            username: req.body.czarUsername,
+            score: 0,
+            cards: []
+        }];
+
+        const game = new GameModel({
+            title: "What Do You Meme CPSC",
+            czarUserId: req.body.czarId,
+            code: code,
+            imageUrl: img,
+            selectedCaptions: [],
+            users: users,
+            roomCards: [...DEFAULT_CAPTIONS]
+        });
+        updatedGame = await game.save();
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({
+            message: "Error while creating the Game Room."
         });
     }
 
-    const users = [{
-        _id: req.body.czarId,
-        username: req.body.czarUsername,
-        score: 0,
-        cards: []
-    }];
-
-    const game = new GameModel({
-        title: "What Do You Meme CPSC",
-        czarUserId: req.body.czarId,
-        code: code,
-        imageUrl: img,
-        selectedCaptions: [],
-        users: users,
-        roomCards: [...DEFAULT_CAPTIONS]
-    });
-
-    game.save()
-    .then( data => res.json(data))
-    .catch( err => {
-        console.error(err);
-        res.status(500).json({
-            message: err.message || "Some error occurred while creating the Lobby."
+    try {
+        const czarToken = generateCzarToken();
+        const roomCzar = new RoomCzarModel({
+            roomId: updatedGame._id,
+            czarUserId: updatedGame.czarUserId,
+            czarToken: czarToken
         });
-    });
-
+        updatedRoomCzar = await roomCzar.save();
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({
+            message: "Error while creating the Czar's Game Room credentials."
+        });
+    }
+    return res.json({"game": updatedGame, "czarToken": updatedRoomCzar.czarToken});
 }
 
 exports.getAllRooms = (req, res) => {
@@ -205,12 +235,24 @@ exports.rotateCzarUser = async (req, res) => {
         }
         const newCzarUserId = findNewCzarUserId(room.users, room.czarUserId);
         room.czarUserId = newCzarUserId;
-        const updatedRoom = room.save();
-        return res.json(updatedRoom);
+        const updatedRoom = await room.save();
+        
+        const czarToken = generateCzarToken();
+        const roomCzar = await RoomCzarModel.findOne({ 'roomId': room._id });
+        if (!roomCzar) {
+            return res.status(500).json({
+                message: `Room Czar configuration not found for roomId=${room._id}.`
+            });
+        }
+        roomCzar.czarUserId = updatedRoom.czarUserId;
+        roomCzar.czarToken = czarToken;
+        const updatedRoomCzar = await roomCzar.save();
+
+        return res.json({"game": updatedRoom, "czarToken": updatedRoomCzar.czarToken });
     } catch (err) {
         console.error(err);
         return res.status(500).json({
-            message: "Error while updating the czarUserId of the room."
+            message: `Error while rotating the Czar user for the room with roomId=${req.params.roomId}.`
         });
     }
 }
@@ -222,21 +264,19 @@ exports.updateImage = async (req, res) => {
         });
     }
     
-    const img = await fetchImageUrl();
-    if (img == null) {
-        return res.status(500).json({
-            message: "Some error occurred while fetching the new meme image url."
-        });
-    }
-    if (!img.includes("http")) {
-        if (img.includes("Some error")) {
+    let img;
+    try {
+        img = await fetchImageUrl();
+    } catch (err) {
+        if (err instanceof ImageFetchError) {
             return res.status(500).json({
-                message: img
+                message: err.message
+            });
+        } else {
+            return res.status(500).json({
+                message: "Error while fetching the new meme image url."
             });
         }
-        return res.status(400).json({
-            message: img
-        });
     }
     
     GameModel.findOneAndUpdate({'_id': req.params.roomId}, {$set: {imageUrl: img}}, {new: true})
@@ -249,16 +289,10 @@ exports.updateImage = async (req, res) => {
         return res.json(room);
     })
     .catch(err => {
-        if (err) {
-            return res.status(400).json({
-                message: err.message
-            });
-        }
-        else {
-            return res.status(500).json({
-                message: "Some error occurred while updating the meme image url of the room."
-            });
-        }
+        console.error(err);
+        return res.status(500).json({
+            message: "Error while updating the meme image url of the room."
+        });
     });
 
 }
@@ -612,6 +646,11 @@ function generateCode() {
     return code;
 }
 
+function generateCzarToken() {
+    const buf = crypto.randomBytes(256);
+    return buf.toString('base64');
+}
+
 async function fetchImageUrl() {
     return await fetch('https://api.imgflip.com/get_memes', {
         method: 'get',
@@ -619,7 +658,7 @@ async function fetchImageUrl() {
     })
     .then(async res => {
         if (!res) {
-            return "Unable to fetch meme image url."
+            throw new ImageFetchError("Unable to fetch meme image url.");
         }
         let parsedRes = await res.text();
         let memeData = JSON.parse(parsedRes).data.memes;
@@ -627,12 +666,8 @@ async function fetchImageUrl() {
         return memeData[num].url;
     })
     .catch(err => {
-        if (err) {
-            return  err.message
-        }
-        else {
-            return "Some error occurred while fetching a new meme image."
-        }
+        console.error(err);
+        throw new ImageFetchError("Error while fetching new image.");
     });
 }
 
